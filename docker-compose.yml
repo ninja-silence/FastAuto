@@ -1,3 +1,6 @@
+x-common: &common
+  networks:
+    - fastauto-network
 services:
 
   # ── PostgreSQL ───────────────────────────────────────────────────────────────
@@ -44,6 +47,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-car_sales}
     volumes:
       - db_data:/var/lib/postgresql/data
+    <<: *common
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
@@ -62,6 +66,7 @@ services:
       --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
+    <<: *common
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -132,7 +137,7 @@ services:
       timeout: 10s
       start_period: 40s
       retries: 3
-
+    <<: *common
   # ── nginx: раздаёт фронтенд + проксирует API ─────────────────────────────────
   nginx:
     build:
@@ -160,3 +165,5 @@ volumes:
   db_data:
   redis_data:
   minio_data:
+networks:
+  fastauto-network:
