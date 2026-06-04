@@ -1,1 +1,0 @@
-import{i as e}from"./FavoritesContext-3Jv1Yn0_.js";var t={getAvailableSlots:t=>e.get(`/listings/${t}/viewing-windows`),createWindow:(t,n)=>e.post(`/listings/${t}/viewing-windows`,n),deleteWindow:(t,n)=>e.delete(`/listings/${t}/viewing-windows/${n}`),setSchedule:(t,n)=>e.put(`/listings/${t}/viewing-schedule`,n)};export{t};

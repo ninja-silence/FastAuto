@@ -1,1 +1,0 @@
-import{i as e}from"./LanguageContext-Boh7g3-E.js";var t=e(`chevron-right`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
