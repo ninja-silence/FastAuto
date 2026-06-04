@@ -2161,6 +2161,8 @@ function UsersTab() {
   const searchAbortRef = useRef<AbortController | null>(null);
   const [filterStatus, setFilterStatus] = useState<UserStatus | ''>('');
   const [filterRole, setFilterRole] = useState<UserRole | ''>('');
+  const [deleteUserModal, setDeleteUserModal] = useState<{ id: string; name: string } | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
 
   const load = useCallback(async () => {
     if (searchQuery.trim()) return; setLoading(true);
@@ -2208,11 +2210,24 @@ function UsersTab() {
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (u: AdminUser) => {
+  const handleDelete = (u: AdminUser) => {
     if (u.id === currentUser?.id) { toast.error(A.cannotDeleteSelf); return; }
-    if (!confirm(`${A.delete} "${u.full_name}"?`)) return;
-    try { await adminApi.deleteUser(u.id); toast.success(A.userDeleted); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : A.error); }
+    setDeleteUserModal({ id: u.id, name: u.full_name });
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUserModal) return;
+    setDeletingUser(true);
+    try {
+      await adminApi.deleteUser(deleteUserModal.id);
+      toast.success(A.userDeleted);
+      setDeleteUserModal(null);
+      if (searchQuery.trim()) performSearch(searchQuery); else load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : A.error);
+    } finally {
+      setDeletingUser(false);
+    }
   };
 
   const isSearching = searchQuery.trim().length > 0;
@@ -2301,6 +2316,24 @@ function UsersTab() {
         </div>
       </div>
       {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} ofLabel={A.paginationOf} />}
+      {deleteUserModal && (
+        <Modal title={A.deleteCarTitle} onClose={() => setDeleteUserModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {A.deleteCarConfirm.replace('объявление', 'пользователя').replace('listing', 'user')}{' '}
+              <span className="font-semibold text-foreground">{deleteUserModal.name}</span>?{' '}
+              {A.deleteCarNote}
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteUserModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80 transition-colors">{A.cancel}</button>
+              <button type="button" onClick={confirmDeleteUser} disabled={deletingUser} className="flex-1 px-4 py-2 bg-destructive text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+                {deletingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {A.delete}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {showForm && (
         <Modal title={editUser ? A.userFormEdit : A.userFormCreate} onClose={() => setShowForm(false)}>
           <form onSubmit={handleSave} className="space-y-3">
