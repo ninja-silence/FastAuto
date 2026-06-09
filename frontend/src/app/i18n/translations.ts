@@ -884,7 +884,7 @@ const ru = {
     carDeleteError: 'Ошибка удаления',
     carStatusChangeError: 'Изменение статуса недоступно через панель администратора',
     carCreateEditError: 'Создание/редактирование авто недоступно: в новой системе пользователи создают объявления самостоятельно',
-    carsLoadError: 'Ошибка загрузки автомобилей',
+    carsLoadError: 'Ошибка загрузки ',
     // OffersTab
     offersTitle: 'Заявки на продажу',
     offersSearchPlaceholder: 'Поиск по марке, модели, году, цене...',
