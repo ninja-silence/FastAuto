@@ -14,6 +14,7 @@ from ollama import AsyncClient, ResponseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.db import async_session_factory
 from app.models.ai import AiMessageRole
 from app.services.ai.ai_history import (
     load_history,
@@ -123,11 +124,12 @@ async def stream_ai_response(
         yield _sse({"type": "error", "message": "Ошибка сохранения диалога"})
         return
 
-    engine = PreferenceEngine(session)
+    preferences: dict[str, dict[str, float]] = {}
     try:
-        preferences = await engine.get_preferences(user_id)
-    except Exception:
-        preferences = {}
+        async with async_session_factory() as pref_session:
+            preferences = await PreferenceEngine(pref_session).get_preferences(user_id)
+    except Exception as exc:
+        logger.debug("Preference load skipped: %s", exc)
 
     system_content = SYSTEM_PROMPT
     top = PreferenceEngine.top_preferences(preferences)
@@ -285,10 +287,13 @@ async def stream_ai_response(
 
     if implicit_tags:
         try:
-            await engine.update_weights(user_id, implicit_tags, "positive")
+            async with async_session_factory() as pref_session:
+                await PreferenceEngine(pref_session).update_weights(
+                    user_id, implicit_tags, "positive"
+                )
+                await pref_session.commit()
         except Exception as exc:
             logger.debug("Preference update skipped: %s", exc)
-            await session.rollback()
 
     try:
         assistant_msg = await save_message(
