@@ -28,7 +28,7 @@ class Ticket(SQLModel, table=True):
     status: TicketStatus = Field(default=TicketStatus.open, index=True)
     creator_id: uuid.UUID = Field(foreign_key="users.id", index=True)
     assignee_id: uuid.UUID | None = Field(
-        default=None, foreign_key="users.id", index=True
+        default=None, foreign_key="users.id", ondelete="SET NULL", index=True
     )
     listing_id: uuid.UUID | None = Field(default=None, foreign_key="listings.id")
     reservation_id: uuid.UUID | None = Field(
@@ -54,7 +54,7 @@ class TicketMessage(SQLModel, table=True):
     ticket_id: uuid.UUID = Field(
         foreign_key="tickets.id", ondelete="CASCADE", index=True
     )
-    sender_id: uuid.UUID = Field(foreign_key="users.id")
+    sender_id: uuid.UUID | None = Field(default=None, foreign_key="users.id", ondelete="SET NULL")
     body: str
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

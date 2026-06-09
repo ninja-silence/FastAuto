@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 
 from app.api.dependencies.auth import (
@@ -136,8 +137,15 @@ async def delete_user_route(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself"
         )
-    await delete_user(session, user)
-    await session.commit()
+    try:
+        await delete_user(session, user)
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Невозможно удалить сотрудника: с ним связаны объявления, брони или тикеты",
+        )
     await invalidate_user_cache(redis, str(user_id))
 
 
