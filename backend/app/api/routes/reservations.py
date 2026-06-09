@@ -424,6 +424,20 @@ async def decline_reservation(
     return response
 
 
+@router.delete("/{reservation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_reservation(
+    reservation_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> None:
+    reservation = await _for_party(session, reservation_id, user)
+    if reservation.status != ReservationStatus.cancelled:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Only cancelled reservations can be deleted",
+        )
+    await session.delete(reservation)
+    await session.commit()
+
+
 async def _cancel(
     session: SessionDep, reservation: Reservation, *, reason: CancelReason
 ) -> None:

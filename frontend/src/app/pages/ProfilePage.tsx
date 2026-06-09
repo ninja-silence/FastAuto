@@ -45,6 +45,14 @@ export function ProfilePage() {
   const setActiveTab = (tab: TabType) => setSearchParams({ tab }, { replace: true });
   const { ids: favoriteIds } = useFavorites();
   const { T } = useLanguage();
+  const [activeReservationCount, setActiveReservationCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    reservationsApi.my()
+      .then(data => setActiveReservationCount(data.filter(r => r.status === 'active' || r.status === 'pending_payment' || r.status === 'settling').length))
+      .catch(() => {});
+  }, [user]);
 
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
@@ -257,7 +265,7 @@ export function ProfilePage() {
     { id: 'listings',      label: T.profile.tabs.listings,      icon: Car },
     { id: 'drafts',        label: T.profile.tabs.drafts,        icon: PenLine },
     { id: 'archive',       label: T.profile.tabs.archive,       icon: Archive },
-    { id: 'reservations',  label: T.profile.tabs.reservations,  icon: FileText },
+    { id: 'reservations',  label: T.profile.tabs.reservations,  icon: FileText, badge: activeReservationCount },
     { id: 'tickets',       label: T.profile.tabs.tickets,       icon: MessageSquare },
   ];
 
@@ -657,6 +665,7 @@ function ReservationsTab({ userId }: { userId: string }) {
   const [carsMap, setCarsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [payingNow, setPayingNow] = useState<string | null>(null);
   const [declining, setDeclining] = useState<string | null>(null);
   const [declineConfirm, setDeclineConfirm] = useState<string | null>(null);
@@ -722,6 +731,19 @@ function ReservationsTab({ userId }: { userId: string }) {
       toast.error(err instanceof Error ? err.message : RT.cancelError);
     } finally {
       setCancelling(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    try {
+      await reservationsApi.delete(id);
+      setReservations(prev => prev.filter(r => r.id !== id));
+      toast.success(RT.deleteSuccess ?? 'Запись удалена');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : RT.cancelError);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -972,6 +994,16 @@ function ReservationsTab({ userId }: { userId: string }) {
                     className="flex items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50">
                     {declining === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                     {RT.declineBookingBtn}
+                  </button>
+                )}
+
+                {r.status === 'cancelled' && (
+                  <button
+                    onClick={() => handleDelete(r.id)}
+                    disabled={deleting === r.id}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 transition-colors disabled:opacity-50">
+                    {deleting === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    {RT.deleteBtn ?? 'Удалить'}
                   </button>
                 )}
               </div>

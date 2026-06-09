@@ -94,4 +94,8 @@ export const reservationsApi = {
       `/reservations/${reservation_id}/decline`,
       { reason }
     ),
+
+  /** Удалить отменённую бронь */
+  delete: (reservation_id: string) =>
+    api.delete<void>(`/reservations/${reservation_id}`),
 };
