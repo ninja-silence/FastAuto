@@ -27,10 +27,10 @@ export function AboutPage() {
       {/* Заголовок */}
       <section className="bg-primary text-primary-foreground py-16 group">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
+          <h1 className="text-4xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105 origin-left">
             {T.about.title}
           </h1>
-          <p className="text-lg opacity-90 max-w-3xl transition-transform duration-300 group-hover:scale-105">
+          <p className="text-lg opacity-90 max-w-3xl transition-transform duration-300 group-hover:scale-105 origin-left">
             {T.about.subtitle}
           </p>
         </div>
@@ -66,7 +66,7 @@ export function AboutPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center group">
 
             <div className="space-y-4">
-              <h2 className="text-3xl font-semibold mb-6 transition-transform duration-300 group-hover:scale-105">
+              <h2 className="text-3xl font-semibold mb-6 transition-transform duration-300 group-hover:scale-105 origin-left">
                 {T.about.historyTitle}
               </h2>
               <div className="text-muted-foreground space-y-4">
@@ -101,8 +101,8 @@ export function AboutPage() {
           </p>
         </div>
 
-        <div className="overflow-x-auto pb-8">
-          <div className="grid grid-cols-6 gap-x-[60px] gap-y-[80px] min-w-[800px] max-w-6xl mx-auto">
+        <div className="overflow-x-hidden pb-8">
+          <div className="md:grid grid-cols-6 gap-x-15 gap-y-20 md:min-w-200 max-w-6xl mx-auto space-y-20 md:space-y-0">
             {[teamMembers[0], teamMembers[3], teamMembers[4]].map((member) => (
               <div
                 key={member.name}
@@ -157,7 +157,7 @@ export function AboutPage() {
           <h2 className="text-3xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
             {T.about.contactTitle}
           </h2>
-          <p className="text-muted-foreground mb-8 transition-transform duration-300 group-hover:scale-105 origin-left">
+          <p className="text-muted-foreground mb-8 transition-transform duration-300 group-hover:scale-105">
             {T.about.contactSubtitle}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
