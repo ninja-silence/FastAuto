@@ -29,23 +29,35 @@ interface LocalMessage {
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
-// ── Car-preview cache (sessionStorage) ─────────────────────────────────────
-// Stores listing IDs per assistant-message position so they survive navigation.
-const PREVIEW_CACHE_KEY = 'ai_car_preview_ids';
+// ── Conversation cache (sessionStorage) ────────────────────────────────────
+// Persists full messages + car-preview listing IDs so navigation away and back
+// restores the exact conversation state without hitting the server.
 
-function savePreviewCache(convId: string, messages: LocalMessage[]) {
+const CONV_CACHE_KEY = 'ai_conv_cache';
+
+type CachedMsg = { id: string; role: 'user' | 'assistant'; content: string; previewIds: string[] };
+
+function saveConvCache(convId: string, messages: LocalMessage[]) {
   try {
-    const cache = JSON.parse(sessionStorage.getItem(PREVIEW_CACHE_KEY) || '{}');
+    const cache = JSON.parse(sessionStorage.getItem(CONV_CACHE_KEY) || '{}');
     cache[convId] = messages
-      .filter(m => m.role === 'assistant' && !m.isToolCall)
-      .map(m => m.carPreviews?.map(c => c.id) ?? []);
-    sessionStorage.setItem(PREVIEW_CACHE_KEY, JSON.stringify(cache));
+      .filter(m => !m.isToolCall)
+      .map(m => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        previewIds: m.carPreviews?.map(c => c.id) ?? [],
+      }));
+    // Keep at most 5 conversations to avoid storage bloat
+    const keys = Object.keys(cache);
+    if (keys.length > 5) delete cache[keys[0]];
+    sessionStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
   } catch {}
 }
 
-function loadPreviewCache(convId: string): string[][] {
+function loadConvCache(convId: string): CachedMsg[] {
   try {
-    const cache = JSON.parse(sessionStorage.getItem(PREVIEW_CACHE_KEY) || '{}');
+    const cache = JSON.parse(sessionStorage.getItem(CONV_CACHE_KEY) || '{}');
     return cache[convId] ?? [];
   } catch { return []; }
 }
@@ -401,32 +413,40 @@ export function AiPage() {
   }, [activeConversationId, setSearchParams]);
 
   const loadConversation = useCallback(async (id: string) => {
+    // ── Fast path: restore from sessionStorage cache ──────────────────────
+    const cached = loadConvCache(id);
+    if (cached.length > 0) {
+      setLoadingConversation(true);
+      const withPreviews = await Promise.all(
+        cached.map(async (m) => {
+          if (m.role !== 'assistant' || m.previewIds.length === 0) {
+            return { id: m.id, role: m.role, content: m.content } as LocalMessage;
+          }
+          const results = await Promise.allSettled(
+            m.previewIds.map(pid => carsApi.get(pid).catch(() => null))
+          );
+          const carPreviews: CarType[] = [];
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value) carPreviews.push(r.value);
+          }
+          return { id: m.id, role: m.role, content: m.content, ...(carPreviews.length > 0 ? { carPreviews } : {}) } as LocalMessage;
+        })
+      );
+      setMessages(withPreviews);
+      setActiveConversationId(id);
+      setLoadingConversation(false);
+      return;
+    }
+
+    // ── Slow path: load from server (first open of conversation) ─────────
     setLoadingConversation(true);
     try {
       const conv = await getConversation(id);
       const base = conv.messages.map((m: AiMessage) => ({ id: m.id, role: m.role, content: m.content }));
 
-      // Restore car previews: try cached listing IDs first, fall back to UUID scan
-      const cachedIds = loadPreviewCache(id);
-      let assistantIdx = 0;
-
       const withPreviews = await Promise.all(
         base.map(async (m) => {
           if (m.role !== 'assistant') return m;
-
-          const idx = assistantIdx++;
-          const ids = cachedIds[idx] ?? [];
-
-          if (ids.length > 0) {
-            const results = await Promise.allSettled(ids.map(id => carsApi.get(id).catch(() => null)));
-            const carPreviews: CarType[] = [];
-            for (const r of results) {
-              if (r.status === 'fulfilled' && r.value) carPreviews.push(r.value);
-            }
-            if (carPreviews.length > 0) return { ...m, carPreviews };
-          }
-
-          // Fallback: scan message text for UUIDs
           const carPreviews = await fetchCarsByMentions(m.content);
           return carPreviews.length > 0 ? { ...m, carPreviews } : m;
         })
@@ -434,6 +454,8 @@ export function AiPage() {
 
       setMessages(withPreviews);
       setActiveConversationId(id);
+      // Populate cache for future navigations
+      saveConvCache(id, withPreviews);
     } catch {
       toast.error(T.ai.loadError);
     } finally {
@@ -510,6 +532,10 @@ export function AiPage() {
           const updated = prev.filter(m => !m.isToolCall).map(m =>
             m.id === assistantId ? { ...m, isStreaming: false } : m
           );
+          // Save text immediately so navigation away preserves the message
+          const cid = convId || activeConversationId;
+          if (cid) saveConvCache(cid, updated);
+
           hadCarSearchRef.current = false;
           const assistantMsgFinal = updated.find(m => m.id === assistantId);
           const directIds = collectedListingIdsRef.current;
@@ -541,9 +567,8 @@ export function AiPage() {
                   const updated = prev2.map(m =>
                     m.id === assistantId ? { ...m, carPreviews } : m
                   );
-                  // Persist listing IDs so they survive navigation away and back
                   const cid = convId || activeConversationId;
-                  if (cid) savePreviewCache(cid, updated);
+                  if (cid) saveConvCache(cid, updated);
                   return updated;
                 });
               }
