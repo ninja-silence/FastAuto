@@ -353,6 +353,9 @@ export function AiPage() {
   const hadCarSearchRef = useRef<boolean>(false);
   const collectedListingIdsRef = useRef<string[]>([]);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const streamBufferRef = useRef('');
+  const displayedLenRef = useRef(0);
+  const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = messagesContainerRef.current;
@@ -471,6 +474,25 @@ export function AiPage() {
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
+    // Reset word-by-word animation state
+    streamBufferRef.current = '';
+    displayedLenRef.current = 0;
+    if (displayTimerRef.current) clearInterval(displayTimerRef.current);
+    displayTimerRef.current = setInterval(() => {
+      const full = streamBufferRef.current;
+      const shown = displayedLenRef.current;
+      if (shown >= full.length) return;
+      let pos = shown;
+      // advance one word
+      while (pos < full.length && /\s/.test(full[pos])) pos++;
+      while (pos < full.length && !/\s/.test(full[pos])) pos++;
+      while (pos < full.length && /\s/.test(full[pos])) pos++;
+      displayedLenRef.current = pos;
+      setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
+        m.id === assistantId ? { ...m, content: full.slice(0, pos) } : m
+      ));
+    }, 100);
+
     await streamChat(
       text.trim(), activeConversationId,
       (chunk) => {
@@ -487,26 +509,29 @@ export function AiPage() {
             return [...withoutOldTool, { id: `tool-${Date.now()}`, role: 'assistant', content: '', isToolCall: true, toolName: chunk.name }];
           });
         } else if (chunk.type === 'token' && chunk.content) {
-          setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
-            m.id === assistantId ? { ...m, content: m.content + chunk.content } : m
-          ));
+          streamBufferRef.current += chunk.content;
         }
       },
       (convId) => {
+        if (displayTimerRef.current) {
+          clearInterval(displayTimerRef.current);
+          displayTimerRef.current = null;
+        }
         setIsStreaming(false);
 
         // Capture refs OUTSIDE of state updater (no side-effects inside updater)
         hadCarSearchRef.current = false;
         const directIds = [...collectedListingIdsRef.current];
         collectedListingIdsRef.current = [];
+        const finalContent = streamBufferRef.current;
 
         const cid = convId || activeConversationId;
 
-        // 1. Update messages: remove tool-call placeholders, mark as done
+        // 1. Update messages: remove tool-call placeholders, flush full content, mark as done
         setMessages(prev => {
           const updated = prev
             .filter(m => !m.isToolCall)
-            .map(m => m.id === assistantId ? { ...m, isStreaming: false } : m);
+            .map(m => m.id === assistantId ? { ...m, content: finalContent, isStreaming: false } : m);
           // Save to cache immediately (text is ready, previews come later)
           if (cid) _convCache.set(cid, updated);
           return updated;
@@ -568,6 +593,10 @@ export function AiPage() {
         loadPreviews();
       },
       (error) => {
+        if (displayTimerRef.current) {
+          clearInterval(displayTimerRef.current);
+          displayTimerRef.current = null;
+        }
         setIsStreaming(false);
         setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
           m.id === assistantId ? { ...m, content: error, isStreaming: false } : m
@@ -580,9 +609,14 @@ export function AiPage() {
   const cancelStream = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    if (displayTimerRef.current) {
+      clearInterval(displayTimerRef.current);
+      displayTimerRef.current = null;
+    }
+    const fullContent = streamBufferRef.current;
     setIsStreaming(false);
     setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
-      m.isStreaming ? { ...m, isStreaming: false } : m
+      m.isStreaming ? { ...m, content: fullContent || m.content, isStreaming: false } : m
     ));
   }, []);
 
