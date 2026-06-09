@@ -145,6 +145,37 @@ async def get_conversation_messages(
     return conv, list(msgs_result.scalars().all())
 
 
+async def get_listing_ids_for_messages(
+    session: AsyncSession,
+    message_ids: list[uuid.UUID],
+) -> dict[str, list[str]]:
+    """Returns {str(message_id): [listing_id, ...]} extracted from stored tool call results."""
+    if not message_ids:
+        return {}
+    result = await session.execute(
+        select(AiToolCall).where(
+            col(AiToolCall.message_id).in_(message_ids),
+            AiToolCall.tool_name == "search_listings",
+        )
+    )
+    out: dict[str, list[str]] = {}
+    for tc in result.scalars().all():
+        if not tc.result:
+            continue
+        try:
+            data = json.loads(tc.result)
+            ids = [
+                item["id"]
+                for item in data.get("listings", [])
+                if isinstance(item, dict) and "id" in item
+            ]
+            if ids:
+                out.setdefault(str(tc.message_id), []).extend(ids)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return out
+
+
 async def delete_conversation(
     session: AsyncSession,
     conversation_id: uuid.UUID,

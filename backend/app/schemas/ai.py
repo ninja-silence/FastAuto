@@ -18,6 +18,7 @@ class AiMessagePublic(BaseModel):
     role: AiMessageRole
     content: str
     created_at: datetime
+    listing_ids: list[str] = []
 
     model_config = {"from_attributes": True}
 

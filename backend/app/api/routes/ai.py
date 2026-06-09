@@ -20,6 +20,7 @@ from app.schemas.ai import (
 from app.services.ai.ai_history import (
     delete_conversation,
     get_conversation_messages,
+    get_listing_ids_for_messages,
     get_user_conversations,
 )
 from app.services.ai.ai_rate_limiter import check_ai_rate_limit, get_remaining_requests
@@ -122,13 +123,22 @@ async def get_conversation(
     conv, messages = result
     user_messages = [m for m in messages if m.role in ("user", "assistant")]
 
+    assistant_ids = [m.id for m in user_messages if m.role == "assistant"]
+    listing_ids_map = await get_listing_ids_for_messages(session, assistant_ids)
+
     return AiConversationDetail(
         id=conv.id,
         title=conv.title,
         created_at=conv.created_at,
         last_message_at=conv.last_message_at,
         messages=[
-            AiMessagePublic.model_validate(m, from_attributes=True)
+            AiMessagePublic(
+                id=m.id,
+                role=m.role,
+                content=m.content,
+                created_at=m.created_at,
+                listing_ids=listing_ids_map.get(str(m.id), []),
+            )
             for m in user_messages
         ],
     )

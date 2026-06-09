@@ -398,14 +398,25 @@ export function AiPage() {
     setLoadingConversation(true);
     try {
       const conv = await getConversation(id);
-      const base = conv.messages.map((m: AiMessage) => ({
-        id: m.id, role: m.role as 'user' | 'assistant', content: m.content,
-      }));
       const withPreviews = await Promise.all(
-        base.map(async (m) => {
-          if (m.role !== 'assistant') return m;
+        conv.messages.map(async (m: AiMessage) => {
+          const base: LocalMessage = { id: m.id, role: m.role, content: m.content };
+          if (m.role !== 'assistant') return base;
+
+          // Use listing_ids stored in DB (works after logout/refresh)
+          const ids = m.listing_ids ?? [];
+          if (ids.length > 0) {
+            const results = await Promise.allSettled(ids.map(lid => carsApi.get(lid).catch(() => null)));
+            const carPreviews: CarType[] = [];
+            for (const r of results) {
+              if (r.status === 'fulfilled' && r.value) carPreviews.push(r.value);
+            }
+            if (carPreviews.length > 0) return { ...base, carPreviews };
+          }
+
+          // Fallback: scan content for UUIDs (legacy messages without listing_ids)
           const carPreviews = await fetchCarsByMentions(m.content);
-          return carPreviews.length > 0 ? { ...m, carPreviews } : m;
+          return carPreviews.length > 0 ? { ...base, carPreviews } : base;
         })
       );
       setMessages(withPreviews);

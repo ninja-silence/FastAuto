@@ -5,6 +5,7 @@ export interface AiMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  listing_ids?: string[];
 }
 
 export interface AiConversation {
