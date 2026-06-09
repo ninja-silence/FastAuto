@@ -29,6 +29,27 @@ interface LocalMessage {
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
+// ── Car-preview cache (sessionStorage) ─────────────────────────────────────
+// Stores listing IDs per assistant-message position so they survive navigation.
+const PREVIEW_CACHE_KEY = 'ai_car_preview_ids';
+
+function savePreviewCache(convId: string, messages: LocalMessage[]) {
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(PREVIEW_CACHE_KEY) || '{}');
+    cache[convId] = messages
+      .filter(m => m.role === 'assistant' && !m.isToolCall)
+      .map(m => m.carPreviews?.map(c => c.id) ?? []);
+    sessionStorage.setItem(PREVIEW_CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
+function loadPreviewCache(convId: string): string[][] {
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(PREVIEW_CACHE_KEY) || '{}');
+    return cache[convId] ?? [];
+  } catch { return []; }
+}
+
 async function fetchCarsByMentions(content: string): Promise<CarType[]> {
   UUID_RE.lastIndex = 0;
   const uuids: string[] = [];
@@ -384,13 +405,33 @@ export function AiPage() {
     try {
       const conv = await getConversation(id);
       const base = conv.messages.map((m: AiMessage) => ({ id: m.id, role: m.role, content: m.content }));
+
+      // Restore car previews: try cached listing IDs first, fall back to UUID scan
+      const cachedIds = loadPreviewCache(id);
+      let assistantIdx = 0;
+
       const withPreviews = await Promise.all(
         base.map(async (m) => {
           if (m.role !== 'assistant') return m;
+
+          const idx = assistantIdx++;
+          const ids = cachedIds[idx] ?? [];
+
+          if (ids.length > 0) {
+            const results = await Promise.allSettled(ids.map(id => carsApi.get(id).catch(() => null)));
+            const carPreviews: CarType[] = [];
+            for (const r of results) {
+              if (r.status === 'fulfilled' && r.value) carPreviews.push(r.value);
+            }
+            if (carPreviews.length > 0) return { ...m, carPreviews };
+          }
+
+          // Fallback: scan message text for UUIDs
           const carPreviews = await fetchCarsByMentions(m.content);
           return carPreviews.length > 0 ? { ...m, carPreviews } : m;
         })
       );
+
       setMessages(withPreviews);
       setActiveConversationId(id);
     } catch {
@@ -496,9 +537,15 @@ export function AiPage() {
               }
 
               if (carPreviews.length > 0) {
-                setMessages(prev2 => prev2.map(m =>
-                  m.id === assistantId ? { ...m, carPreviews } : m
-                ));
+                setMessages(prev2 => {
+                  const updated = prev2.map(m =>
+                    m.id === assistantId ? { ...m, carPreviews } : m
+                  );
+                  // Persist listing IDs so they survive navigation away and back
+                  const cid = convId || activeConversationId;
+                  if (cid) savePreviewCache(cid, updated);
+                  return updated;
+                });
               }
             };
             loadPreviews();
